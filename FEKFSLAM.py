@@ -1,6 +1,7 @@
 from MapFeature import *
 from FEKFMBL import *
-
+from gtsam.symbol_shorthand import L, X
+import gtsam
 class FEKFSLAM(FEKFMBL):
     """
     Class implementing the Feature-based Extended Kalman Filter for Simultaneous Localization and Mapping (FEKFSLAM).
@@ -88,7 +89,8 @@ class FEKFSLAM(FEKFMBL):
 
         number_of_new_features = znp.size // self.zfi_dim
         ## To be completed by the student
-        self.nf += number_of_new_features
+        new_factors = gtsam.NonlinearFactorGraph()
+        new_values = gtsam.Values()
         for i in range(number_of_new_features):
             
             idx_start = i * self.zfi_dim
@@ -113,6 +115,18 @@ class FEKFSLAM(FEKFMBL):
             
             
             P_new_new = J1 @ P_B @ J1.T + J2 @ Ri @ J2.T
+            P_new_new += np.eye(2) * 1e-6
+            if np.any(np.isnan(x_new_feature)) or np.any(np.isnan(P_new_new)):
+                print(f"!!! WARNING: Skipping landmark {self.nf} due to NaN in EKF projection !!!")
+            # --- DEBUG START ---
+            if np.any(np.isnan(x_new_feature)) or np.any(np.isnan(P_new_new)):
+                print(f"!!! CRITICAL: NaN detected in New Feature {self.nf} !!!")
+                print(f"x_new_feature: {x_new_feature}")
+                print(f"P_new_new: {P_new_new}")
+
+            det_P = np.linalg.det(P_new_new)
+            if det_P <= 0:
+                print(f"!!! WARNING: P_new_new for landmark {self.nf} is singular or non-positive! Det: {det_P}")
             
             # Calculate Cross-Correlations (Bottom-Left block)
             # need the correlation between the Robot and EVERYTHING else in the map
@@ -131,6 +145,30 @@ class FEKFSLAM(FEKFMBL):
                 [P_new_old,   P_new_new]
             ])
 
+            # --- GTSAM Graph Integration (Part B) ---
+            # landmark_idx is the current count before incrementing
+            landmark_key = L(self.nf)  # Create a new landmark key using the current count of features
+            
+            
+
+            # 1. Add Initial Estimate
+            l_pos = gtsam.Point2(x_new_feature[0,0], x_new_feature[1,0])
+            new_values.insert(landmark_key, l_pos)
+
+            # 2. Add Prior Factor using the calculated EKF covariance
+            # We use the landmark's own covariance block (P_new_new)
+            landmark_noise = gtsam.noiseModel.Gaussian.Covariance(P_new_new)
+            new_factors.add(gtsam.PriorFactorPoint2(landmark_key, l_pos, landmark_noise))
+
+            # 3. Update ISAM2 immediately with the new landmark node
+            # self.isam.update(new_factors, new_values)
+
+            self.nf += 1  # Increment the count of features in the state vector
+        
+        try:
+            self.isam.update(new_factors, new_values)
+        except RuntimeError as e:
+            print(f"ISAM2 Error in AddNewFeatures: {e}")
         return xk_plus, Pk_plus
 
     def Prediction(self, uk, Qk, xk_1, Pk_1):
@@ -291,8 +329,8 @@ class FEKFSLAM(FEKFMBL):
         # temp = xk_1
         Pk_1 = P0
 
-        # zf, Rf = self.GetFeatures(xk_1)
-        # xk_1, Pk_1 = self.AddNewFeatures(xk_1, Pk_1, zf, Rf)
+        zf, Rf = self.GetFeatures(xk_1)
+        xk_1, Pk_1 = self.AddNewFeatures(xk_1, Pk_1, zf, Rf)
         xsk_1 = self.robot.xsk_1
         i = 1
         for self.k in range(self.kSteps):
@@ -363,8 +401,8 @@ class FEKFSLAM(FEKFMBL):
             xk, Pk = self.Update(zk,Rk,xk_bar,Pk_bar,Hk,Vk, k, xk_1, uk, Qk, zf, Rf, self.H)
             self.xk, self.Pk = xk, Pk
         # Use the variable names zm, zf, Rf, znp, Rnp so that the plotting functions work
-        # xk, Pk = self.AddNewFeatures(xk, Pk, znp, Rnp)
-        # self.xk, self.Pk = xk, Pk
+        xk, Pk = self.AddNewFeatures(xk, Pk, znp, Rnp)
+        self.xk, self.Pk = xk, Pk
         
         self.Log(self.robot.xsk, self.GetRobotPose(self.xk), self.GetRobotPoseCovariance(self.Pk),
                  self.GetRobotPose(self.xk_bar), zm)  # log the results for plotting

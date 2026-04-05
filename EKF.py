@@ -19,15 +19,15 @@ class EKF(GaussianFilter):
         :param P0: initial covariance matrix
         :param args: arguments to be passed to the parent class
         """
-        self.minK = 150  # minimum number of range measurements to process initially
-        self.incK = 25  # minimum number of new range measurements to process for one ISAM update
-        self.isam = gtsam.ISAM2()
-        self.initial = gtsam.Values()
-        self.graph = gtsam.NonlinearFactorGraph()
+        # self.minK = 150  # minimum number of range measurements to process initially
+        # self.incK = 25  # minimum number of new range measurements to process for one ISAM update
+        # self.isam = gtsam.ISAM2()
+        # self.initial = gtsam.Values()
+        # self.graph = gtsam.NonlinearFactorGraph()
         # Noise models will be initialized lazily in Update()
-        self.PRIOR_NOISE = None
-        self.ODOMETRY_NOISE = None
-        self.MEASUREMENT_NOISE = None
+        # self.PRIOR_NOISE = None
+        # self.ODOMETRY_NOISE = None
+        # self.MEASUREMENT_NOISE = None
         super().__init__(x0, P0, *args)  # call parent constructor
 
     def f(self, xk_1, uk): # motion model
@@ -266,7 +266,7 @@ class EKF(GaussianFilter):
         new_values = gtsam.Values()
 
         # STEP 0: Anchor the graph (Run only once at the very beginning)
-        # print(f"DEBUG: Step k={k}, connecting {X(k)} to {X(k+1)}")
+        print(f"DEBUG: Step k={k}, connecting {X(k)} to {X(k+1)}")
         # print(f"\n--- DEBUG Step k={k} ---")
         # print(f"State vector xk_bar shape: {xk_bar.shape}")
         # print(f"Covariance Pk_bar shape: {Pk_bar.shape}")
@@ -277,26 +277,40 @@ class EKF(GaussianFilter):
             new_factors.add(gtsam.PriorFactorPose2(X(0), x0_pose, self.PRIOR_NOISE))
 
             # PriorFactors for every landmark in the state
-            landmark_prior_noise = gtsam.noiseModel.Isotropic.Sigma(2, 0.1) # Small uncertainty
-            for j in range(len(self.M)):
-                l_key = L(j)
-                # landmark = np.array
-                l_pos = gtsam.Point2(np.asarray([self.M[j][0], self.M[j][1]]).reshape(2,))
-                new_values.insert(l_key, l_pos)
-                new_factors.add(gtsam.PriorFactorPoint2(l_key, l_pos, landmark_prior_noise))
+            # landmark_prior_noise = gtsam.noiseModel.Isotropic.Sigma(2, 0.1) # Small uncertainty
+            # for j in range(len(self.M)):
+            #     l_key = L(j)
+            #     # landmark = np.array
+            #     l_pos = gtsam.Point2(np.asarray([self.M[j][0], self.M[j][1]]).reshape(2,))
+            #     new_values.insert(l_key, l_pos)
+            #     new_factors.add(gtsam.PriorFactorPoint2(l_key, l_pos, landmark_prior_noise))
 
         if getattr(self, 'zf_observed', True):
-            # We derive the range noise from the Rxy properties
-            # If Rxy is [[sig_x^2, 0], [0, sig_y^2]], we take the average sigma for the RangeFactor
-            range_sigma = np.sqrt(np.mean(np.diag(Rf[:2, :2])))
-            range_noise = gtsam.noiseModel.Isotropic.Sigma(1, range_sigma)
-            # Iterate through the association vector H
+            # Measurement noise: sig_x and sig_y from Rf
+            sig_x = np.sqrt(Rf[0,0])
+            sig_y = np.sqrt(Rf[1,1])
+            # For isotropic noise in GTSAM, we can take the average or use a Diagonal model
+            bearing_sigma = 0.1 # Adjust based on sensor quality
+            range_sigma = sig_x # Simplified
+            
+            br_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([bearing_sigma, range_sigma]))
+
             for i, landmark_idx in enumerate(association):
                 if landmark_idx is not None:
-                    # zf contains raw measurements. If zfi_dim=1, it's just range.
-                    range_val = float(zf[i])
-                    new_factors.add(gtsam.RangeFactor2D(X(k+1), L(int(landmark_idx)), 
-                                                       range_val, range_noise))
+                    # 1. Correctly extract the Cartesian pair for this landmark
+                    idx = i * self.zfi_dim
+                    x_meas = zf[idx]
+                    y_meas = zf[idx+1]
+                    
+                    # 2. Convert Cartesian to Bearing/Range
+                    range_val = np.sqrt(x_meas**2 + y_meas**2)
+                    bearing_val = np.arctan2(y_meas, x_meas)
+                    
+                    # 3. Add a BearingRange factor (Constrains the landmark in 2D)
+                    new_factors.add(gtsam.BearingRangeFactor2D(
+                        X(k+1), L(int(landmark_idx)), 
+                        gtsam.Rot2(bearing_val), range_val, br_noise))
+        # eps = 1e-6
         diag_Pk_bar = np.diag(Qk)
         # Clamp diagonal elements to avoid near-zero values, then take sqrt
         diag_Pk_bar_clamped = np.maximum(diag_Pk_bar, 1e-6)
@@ -327,16 +341,71 @@ class EKF(GaussianFilter):
             self.isam.update(new_factors, new_values)
             result = self.isam.calculateEstimate()
             
-            # Extract globally smoothed results
-            # marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
-            self.Pk = self.isam.marginalCovariance(X(k+1))
+            # --- 1. Extraction with Key Safety ---
             pose_res = result.atPose2(X(k + 1))
+            optimized_xk = np.array([[pose_res.x()], [pose_res.y()], [pose_res.theta()]])
             
-            # Update state with optimized values
-            self.xk = np.array([[pose_res.x()], [pose_res.y()], [pose_res.theta()]])
+            keys = gtsam.KeyVector()
+            keys.append(X(k+1))
+
+            for j in range(self.nf):
+                # Check if the landmark actually made it into the graph
+                if result.exists(L(j)):
+                    l_res = result.atPoint2(L(j))
+                    optimized_xk = np.vstack((optimized_xk, l_res.reshape(2, 1)))
+                    keys.append(L(j))
+                else:
+                    # If it's missing, we must keep the EKF estimate to avoid shape errors
+                    print(f"!!! WARNING: L({j}) missing from ISAM result at step {k} !!!")
+                    l_old = self.xk[self.xBpose_dim + j*self.zfi_dim : self.xBpose_dim + (j+1)*self.zfi_dim]
+                    optimized_xk = np.vstack((optimized_xk, l_old))
             
+            self.xk = optimized_xk
+
+            # --- 2. Covariance Extraction with Individual Checks ---
+            marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
+            
+            # # Request the joint matrix
+            # full_joint_matrix = marginals.jointMarginalCovariance(keys).fullMatrix()
+            
+            # if np.any(np.isnan(full_joint_matrix)):
+            #     print(f"\n[DEBUG] NaN found in Joint Matrix at Step {k}. Checking marginals:")
+            #     for key in keys:
+            #         m = marginals.marginalCovariance(key)
+            #         if np.any(np.isnan(m)):
+            #             # Symbol.string() helps see if it's x3, l2, etc.
+            #             print(f"  -> Key {gtsam.DefaultKeyFormatter(key)} contains NaNs!")
+                
+            #     # Fallback: If joint is broken, try to use Pose marginal + identity for landmarks
+            #     # This prevents the SVD converge crash
+            #     self.Pk = Pk_bar 
+            # else:
+            #     self.Pk = full_joint_matrix
+            # Define the size of the full state vector
+            dim = self.xBpose_dim + self.nf * self.zfi_dim
+            new_Pk = np.zeros((dim, dim))
+
+            # 1. Get Robot Pose Marginal (The 3x3 top-left block)
+            new_Pk[0:3, 0:3] = marginals.marginalCovariance(X(k+1))
+
+            # 2. Get individual Landmark Marginals (The 2x2 diagonal blocks)
+            for j in range(self.nf):
+                start = self.xBpose_dim + j * self.zfi_dim
+                if result.exists(L(j)):
+                    try:
+                        # Extract only the 2x2 diagonal block for this landmark
+                        new_Pk[start:start+2, start:start+2] = marginals.marginalCovariance(L(j))
+                    except:
+                        # If a specific landmark fails, give it a tiny identity covariance 
+                        # so the SVD plotter doesn't crash
+                        new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+                else:
+                    # Fallback for landmarks not in the graph
+                    new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+
+            self.Pk = new_Pk
         except RuntimeError as e:
             print(f"ISAM2 Error at step {k}: {e}")
             # If ISAM2 fails, we fall back to the EKF result so the loop doesn't die
-            self.Pk = Pk_bar
+            pass
         return self.xk, self.Pk

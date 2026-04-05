@@ -163,7 +163,10 @@ class DifferentialDriveSimulatedRobot(SimulatedRobot):
 
         
         # if the time since last reading is less than the reading interval, return the previous reading
-        if (current_time - self.last_xy_feature_reading_time) < delta_t:
+        # if (current_time - self.last_xy_feature_reading_time) < delta_t:
+        #     return zf, self.Rxy
+        epsilon = 1e-9 
+        if (current_time - self.last_xy_feature_reading_time) < (delta_t - epsilon):
             return zf, self.Rxy
         for feature in self.M:
             # Extract feature coordinates (assuming CartesianFeature is 2D)
