@@ -231,7 +231,7 @@ class EKF(GaussianFilter):
     #     self.initial = gtsam.Values()
     #     return self.xk, self.Pk
     
-    def Update(self, zk, Rk, xk_bar, Pk_bar, Hk, Vk, k, xk_1, uk, Qk):
+    def Update(self, zk, Rk, xk_bar, Pk_bar, Hk, Vk, k, xk_1, uk, Qk, zf, Rf, association):
         """
         Update step of the EKF + ISAM2.
         - Calculates standard EKF update first.
@@ -276,7 +276,27 @@ class EKF(GaussianFilter):
             new_values.insert(X(0), x0_pose)
             new_factors.add(gtsam.PriorFactorPose2(X(0), x0_pose, self.PRIOR_NOISE))
 
-        
+            # PriorFactors for every landmark in the state
+            landmark_prior_noise = gtsam.noiseModel.Isotropic.Sigma(2, 0.1) # Small uncertainty
+            for j in range(len(self.M)):
+                l_key = L(j)
+                # landmark = np.array
+                l_pos = gtsam.Point2(np.asarray([self.M[j][0], self.M[j][1]]).reshape(2,))
+                new_values.insert(l_key, l_pos)
+                new_factors.add(gtsam.PriorFactorPoint2(l_key, l_pos, landmark_prior_noise))
+
+        if getattr(self, 'zf_observed', True):
+            # We derive the range noise from the Rxy properties
+            # If Rxy is [[sig_x^2, 0], [0, sig_y^2]], we take the average sigma for the RangeFactor
+            range_sigma = np.sqrt(np.mean(np.diag(Rf[:2, :2])))
+            range_noise = gtsam.noiseModel.Isotropic.Sigma(1, range_sigma)
+            # Iterate through the association vector H
+            for i, landmark_idx in enumerate(association):
+                if landmark_idx is not None:
+                    # zf contains raw measurements. If zfi_dim=1, it's just range.
+                    range_val = float(zf[i])
+                    new_factors.add(gtsam.RangeFactor2D(X(k+1), L(int(landmark_idx)), 
+                                                       range_val, range_noise))
         diag_Pk_bar = np.diag(Qk)
         # Clamp diagonal elements to avoid near-zero values, then take sqrt
         diag_Pk_bar_clamped = np.maximum(diag_Pk_bar, 1e-6)

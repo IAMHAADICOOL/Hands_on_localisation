@@ -42,10 +42,29 @@ if __name__ == '__main__':
     dr_robot = DR_3DOFDifferentialDrive(index, kSteps, robot, x0)
     robot.SetMap(M)
 
-    auv = FEKFSLAM_3DOFDD_InputVelocityMM_2DCartesianFeatureOM([], alpha, kSteps, robot)
 
-    P0 = np.zeros((3, 3))
+    n_features = len(M)
+    total_dim = 3 + n_features * 2
+
+    x0_robot = np.zeros((3, 1)) # Initial robot pose (0,0,0)
+    x0_slam = np.zeros((total_dim, 1))
+    x0_slam[0:3] = x0_robot
+
+    for i, feature in enumerate(M):
+        idx = 3 + i * 2
+        x0_slam[idx : idx + 2] = feature
+        
+    # Set landmark uncertainty to be small (e.g., 0.01) as per instructions
+    P0_slam = np.eye(total_dim) * 0.01 
+    # P0 = np.zeros((3, 3))
+    P0_robot = np.diag([0.1, 0.1, 0.01])
+    P0_slam[0:3, 0:3] = P0_robot
+
+
+    auv = FEKFSLAM_3DOFDD_InputVelocityMM_2DCartesianFeatureOM(M, alpha, kSteps, robot)
+
+    
     usk=np.array([[0.5, 0, 0.03]]).T
-    auv.LocalizationLoop(x0, P0, usk)
+    auv.LocalizationLoop(x0_slam, P0_slam, usk)
 
     exit(0)

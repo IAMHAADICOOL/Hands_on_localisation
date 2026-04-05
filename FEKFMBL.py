@@ -512,6 +512,9 @@ class FEKFMBL(GFLocalization, MapFeature):
         print()
         # print(f"This is value of self.k%self.robot.visualizationInterval==0 {self.k%self.robot.visualizationInterval}")
         if self.robot.k % self.robot.visualizationInterval == 0:
+            print(f"This is the value of self.robot.k {self.robot.k}")
+            print(f"This is the value of self.robot.visualizationInterval {self.robot.visualizationInterval}")
+            print(f"This is the value of self.robot.k%self.robot.visualizationInterval {self.robot.k%self.robot.visualizationInterval}")
             self.PlotRobotUncertainty()
             # I changed the following b to r to observe what is happening, the zf is not correct
             self.PlotFeatureObservationUncertainty(zf, Rf,'r')

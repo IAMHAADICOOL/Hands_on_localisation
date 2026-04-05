@@ -48,7 +48,8 @@ class FEKFSLAMFeature(MapFeature):
         idx_end = idx_start + self.xF_dim
         
         # Slice the state vector to get the feature
-        NxFj = self.Feature(xk_bar[idx_start:idx_end])
+        feature = xk_bar[idx_start:idx_end]
+        NxFj = self.Feature(feature)
         # z_expected = self.s2o(NxFj.boxplus(NxB.ominus()))
 
 

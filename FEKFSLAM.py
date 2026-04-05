@@ -291,8 +291,8 @@ class FEKFSLAM(FEKFMBL):
         # temp = xk_1
         Pk_1 = P0
 
-        zf, Rf = self.GetFeatures(xk_1)
-        xk_1, Pk_1 = self.AddNewFeatures(xk_1, Pk_1, zf, Rf)
+        # zf, Rf = self.GetFeatures(xk_1)
+        # xk_1, Pk_1 = self.AddNewFeatures(xk_1, Pk_1, zf, Rf)
         xsk_1 = self.robot.xsk_1
         i = 1
         for self.k in range(self.kSteps):
@@ -360,11 +360,11 @@ class FEKFSLAM(FEKFMBL):
             # print("This is type of Hk", type(Hk))
             # print("This is type of Vk", type(Vk))
             # print("This is the type of Pk_bar", type(Pk_bar))
-            xk, Pk = self.Update(zk,Rk,xk_bar,Pk_bar,Hk,Vk, k, xk_1, uk, Qk)
+            xk, Pk = self.Update(zk,Rk,xk_bar,Pk_bar,Hk,Vk, k, xk_1, uk, Qk, zf, Rf, self.H)
             self.xk, self.Pk = xk, Pk
         # Use the variable names zm, zf, Rf, znp, Rnp so that the plotting functions work
-        xk, Pk = self.AddNewFeatures(xk, Pk, znp, Rnp)
-        self.xk, self.Pk = xk, Pk
+        # xk, Pk = self.AddNewFeatures(xk, Pk, znp, Rnp)
+        # self.xk, self.Pk = xk, Pk
         
         self.Log(self.robot.xsk, self.GetRobotPose(self.xk), self.GetRobotPoseCovariance(self.Pk),
                  self.GetRobotPose(self.xk_bar), zm)  # log the results for plotting
@@ -402,7 +402,11 @@ class FEKFSLAM(FEKFMBL):
         :param Rnp: covariance matrix of non-paired feature observations
         :return:
         """
-        if self.k % self.robot.visualizationInterval == 0:
+        if self.robot.k % self.robot.visualizationInterval == 0:
+        # if self.robot.k % 1 == 0:
+            # print(f"This is the value of self.robot.k {self.robot.k}")
+            # print(f"This is the value of self.robot.visualizationInterval {self.robot.visualizationInterval}")
+            # print(f"This is the value of self.robot.k%self.robot.visualizationInterval {self.robot.k%self.robot.visualizationInterval}")
             self.PlotRobotUncertainty()
             self.PlotFeatureObservationUncertainty(znp, Rnp,'b')
             self.PlotFeatureObservationUncertainty(zf, Rf,'g')
