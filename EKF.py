@@ -286,17 +286,30 @@ class EKF(GaussianFilter):
                 new_factors.add(gtsam.PriorFactorPoint2(l_key, l_pos, landmark_prior_noise))
 
         if getattr(self, 'zf_observed', True):
-            # We derive the range noise from the Rxy properties
-            # If Rxy is [[sig_x^2, 0], [0, sig_y^2]], we take the average sigma for the RangeFactor
-            range_sigma = np.sqrt(np.mean(np.diag(Rf[:2, :2])))
-            range_noise = gtsam.noiseModel.Isotropic.Sigma(1, range_sigma)
-            # Iterate through the association vector H
+            # Measurement noise: sig_x and sig_y from Rf
+            sig_x = np.sqrt(Rf[0,0])
+            sig_y = np.sqrt(Rf[1,1])
+            # For isotropic noise in GTSAM, we can take the average or use a Diagonal model
+            bearing_sigma = 0.1 # Adjust based on sensor quality
+            range_sigma = sig_x # Simplified
+            
+            br_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([bearing_sigma, range_sigma]))
+
             for i, landmark_idx in enumerate(association):
                 if landmark_idx is not None:
-                    # zf contains raw measurements. If zfi_dim=1, it's just range.
-                    range_val = float(zf[i])
-                    new_factors.add(gtsam.RangeFactor2D(X(k+1), L(int(landmark_idx)), 
-                                                       range_val, range_noise))
+                    # 1. Correctly extract the Cartesian pair for this landmark
+                    idx = i * self.zfi_dim
+                    x_meas = zf[idx]
+                    y_meas = zf[idx+1]
+                    
+                    # 2. Convert Cartesian to Bearing/Range
+                    range_val = np.sqrt(x_meas**2 + y_meas**2)
+                    bearing_val = np.arctan2(y_meas, x_meas)
+                    
+                    # 3. Add a BearingRange factor (Constrains the landmark in 2D)
+                    new_factors.add(gtsam.BearingRangeFactor2D(
+                        X(k+1), L(int(landmark_idx)), 
+                        gtsam.Rot2(bearing_val), range_val, br_noise))
         diag_Pk_bar = np.diag(Qk)
         # Clamp diagonal elements to avoid near-zero values, then take sqrt
         diag_Pk_bar_clamped = np.maximum(diag_Pk_bar, 1e-6)
