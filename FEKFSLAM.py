@@ -350,18 +350,18 @@ class FEKFSLAM(FEKFMBL):
         self.n_zf = 0 if zf is None else len(zf) // self.zfi_dim
         self.H = self.DataAssociation(xk_bar, Pk_bar, zf, Rf)
         zk, Rk, Hk, Vk, znp, Rnp = self.StackMeasurementsAndFeatures(zm, Rm, Hm, Vm, zf, Rf, self.H)
-        if zk is None:
-            xk, Pk = xk_bar, Pk_bar
-            # had to add the following line because then plotting was not working
-            self.xk, self.Pk = xk_bar, Pk_bar
-        else:
+        # if zk is None:
+        #     xk, Pk = xk_bar, Pk_bar
+        #     # had to add the following line because then plotting was not working
+        #     self.xk, self.Pk = xk_bar, Pk_bar
+        # else:
             # print("This is the type of zk", type(zk))
             # print("This is type of Rk", type(Rk))
             # print("This is type of Hk", type(Hk))
             # print("This is type of Vk", type(Vk))
             # print("This is the type of Pk_bar", type(Pk_bar))
-            xk, Pk = self.Update(zk,Rk,xk_bar,Pk_bar,Hk,Vk, k, xk_1, uk, Qk, zf, Rf, self.H)
-            self.xk, self.Pk = xk, Pk
+        xk, Pk = self.Update(zk,Rk,xk_bar,Pk_bar,Hk,Vk, k, xk_1, uk, Qk, zf, Rf, self.H)
+        self.xk, self.Pk = xk, Pk
         # Use the variable names zm, zf, Rf, znp, Rnp so that the plotting functions work
         # xk, Pk = self.AddNewFeatures(xk, Pk, znp, Rnp)
         # self.xk, self.Pk = xk, Pk

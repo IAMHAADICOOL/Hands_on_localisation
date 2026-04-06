@@ -273,8 +273,8 @@ class EKF(GaussianFilter):
         if k == 0:
             # We must provide X0 and its Prior for the system to have an origin [cite: 18, 48]
             x0_pose = gtsam.Pose2(xk_1[0, 0], xk_1[1, 0], xk_1[2, 0])
-            new_values.insert(X(0), x0_pose)
-            new_factors.add(gtsam.PriorFactorPose2(X(0), x0_pose, self.PRIOR_NOISE))
+            new_values.insert(X(k), x0_pose)
+            new_factors.add(gtsam.PriorFactorPose2(X(k), x0_pose, self.PRIOR_NOISE))
 
             # PriorFactors for every landmark in the state
             landmark_prior_noise = gtsam.noiseModel.Isotropic.Sigma(2, 0.1) # Small uncertainty
@@ -284,6 +284,10 @@ class EKF(GaussianFilter):
                 l_pos = gtsam.Point2(np.asarray([self.M[j][0], self.M[j][1]]).reshape(2,))
                 new_values.insert(l_key, l_pos)
                 new_factors.add(gtsam.PriorFactorPoint2(l_key, l_pos, landmark_prior_noise))
+        
+        # else:
+        #     x0_pose = gtsam.Pose2(xk_1[0, 0], xk_1[1, 0], xk_1[2, 0])
+        #     new_values.insert(X(k), x0_pose)
 
         diag_Pk_bar = np.diag(Qk)
         # Clamp diagonal elements to avoid near-zero values, then take sqrt
@@ -339,10 +343,28 @@ class EKF(GaussianFilter):
             # Add a prior constraint on the rotation of the LATEST pose
             new_factors.add(gtsam.PoseRotationPrior2D(X(k + 1), gtsam.Rot2(compass_yaw), compass_noise))
 
+        # --- DIAGNOSTIC DEBUG BLOCK ---
+        print(f"\n--- ISAM2 Debug Step k={k} ---")
+        print(f"New Values Keys: {[gtsam.DefaultKeyFormatter(k) for k in new_values.keys()]}")
+        print(f"New Factors: {new_factors.size()} factors added")
+
+        
+        # Check for 'BetweenFactor' consistency
+
         try:
             self.isam.update(new_factors, new_values)
             result = self.isam.calculateEstimate()
-            
+            # Check if the 'previous' pose key exists in the current ISAM state
+            if k > 0 and not result.exists(X(k)):
+                print(f"!!! CRITICAL: Key {X(k)} (x{k}) is missing from ISAM2!")
+                print("This means the previous update step likely failed or was skipped.")
+
+            for i in range(new_factors.size()):
+                factor = new_factors.at(i)
+                for key in factor.keys():
+                    if not result.exists(key) and not new_values.exists(key):
+                        print(f"!!! FACTOR ERROR: Factor {i} refers to missing Key {gtsam.DefaultKeyFormatter(key)}")            
+            print(f"ISAM2 update successful at step {k}. Extracting results...")
             # --- 1. Extraction with Key Safety ---
             pose_res = result.atPose2(X(k + 1))
             optimized_xk = np.array([[pose_res.x()], [pose_res.y()], [pose_res.theta()]])
@@ -366,6 +388,7 @@ class EKF(GaussianFilter):
 
             # --- 2. Covariance Extraction with Individual Checks ---
             marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
+            # self.Pk = marginals.jointMarginalCovariance(keys).fullMatrix()
             
             # # Request the joint matrix
             # full_joint_matrix = marginals.jointMarginalCovariance(keys).fullMatrix()
