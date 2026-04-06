@@ -239,25 +239,22 @@ class EKF(GaussianFilter):
         """
         # --- 1. Standard EKF Update Logic ---
         # Calculate Kalman gain
-        S = Hk @ Pk_bar @ Hk.T + Vk @ Rk @ Vk.T
-        K = Pk_bar @ Hk.T @ np.linalg.inv(S)
-        
-        # Calculate innovation and wrap the yaw angle
-        innovation = zk - self.h(xk_bar)
-        if getattr(self, 'zm_observed', True):
-            innovation[0, 0] = wrap_angle(innovation[0, 0])
-        
-        # Corrected EKF state
-        self.xk = xk_bar + K @ innovation
-
-        # --- JOSEPH FORM IMPLEMENTATION ---
-        # This replaces the simple P = (I - KH)P to maintain positive-definiteness
-        I = np.eye(len(self.xk))
-        # Note: We use Pk_bar here as it is the 'previous' covariance for this update step
-        # We also include Vk to stay consistent with your Kalman Gain calculation
-        term = I - K @ Hk
-        self.Pk = term @ Pk_bar @ term.T + K @ (Vk @ Rk @ Vk.T) @ K.T
-
+        if zk is not None:
+            S = Hk @ Pk_bar @ Hk.T + Vk @ Rk @ Vk.T
+            K = Pk_bar @ Hk.T @ np.linalg.inv(S)
+            innovation = zk - self.h(xk_bar)
+            if getattr(self, 'zm_observed', True):
+                innovation[0, 0] = wrap_angle(innovation[0, 0])
+            
+            # Correct state and covariance (Joseph Form for stability)
+            self.xk = xk_bar + K @ innovation
+            I = np.eye(len(self.xk))
+            term = I - K @ Hk
+            self.Pk = term @ Pk_bar @ term.T + K @ (Vk @ Rk @ Vk.T) @ K.T
+        else:
+            self.xk, self.Pk = xk_bar, Pk_bar
+            print("No observation at this step, skipping EKF update.")
+            # exit(0)
         # --- 2. ISAM2 Incremental Logic ---
         # These containers only hold the NEW data for this specific step 'k'
         self.PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.3, 0.3, 0.1]))
@@ -354,6 +351,10 @@ class EKF(GaussianFilter):
         try:
             self.isam.update(new_factors, new_values)
             result = self.isam.calculateEstimate()
+            pose_res = result.atPose2(X(k + 1))
+            if abs(pose_res.x()) > 1e5 or abs(pose_res.y()) > 1e5:
+                print(f"!!! Divergence detected at step {k}. Skipping ISAM re-injection.")
+                return self.xk, self.Pk
             # Check if the 'previous' pose key exists in the current ISAM state
             if k > 0 and not result.exists(X(k)):
                 print(f"!!! CRITICAL: Key {X(k)} (x{k}) is missing from ISAM2!")

@@ -78,7 +78,7 @@ class DifferentialDriveSimulatedRobot(SimulatedRobot):
         self.Rxy = np.diag(np.array([0.5 ** 2, 1 ** 2])) # covariance of simulated Cartesian2D feature noise
 
 
-        self.yaw_reading_frequency = 1/501  # frequency of yaw readings
+        self.yaw_reading_frequency = 1/5000  # frequency of yaw readings
         self.v_yaw_std = np.deg2rad(5)  # std deviation of simulated heading noise
 
         # Sensors sampling rate control
