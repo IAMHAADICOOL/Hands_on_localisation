@@ -285,12 +285,30 @@ class EKF(GaussianFilter):
                 new_values.insert(l_key, l_pos)
                 new_factors.add(gtsam.PriorFactorPoint2(l_key, l_pos, landmark_prior_noise))
 
+                diag_Pk_bar = np.diag(Qk)
+        # Clamp diagonal elements to avoid near-zero values, then take sqrt
+        diag_Pk_bar_clamped = np.maximum(diag_Pk_bar, 1e-6)
+        odometry_sigmas = np.sqrt(diag_Pk_bar_clamped)
+        odometry_noise = gtsam.noiseModel.Diagonal.Sigmas(odometry_sigmas)
+        # ODOMETRY_SIGMAS = np.array([0.1, 0.1, 0.05]) # Adjust based on your lab settings
+        # odometry_noise = gtsam.noiseModel.Diagonal.Sigmas(ODOMETRY_SIGMAS)
+        # STEP k: Add the NEW Pose guess and the NEW BetweenFactor
+        # X(k+1) is the variable we just estimated using the EKF math above
+        new_pose_guess = gtsam.Pose2(self.xk[0, 0], self.xk[1, 0], self.xk[2, 0])
+        new_values.insert(X(k + 1), new_pose_guess)
+        
+        # The BetweenFactor connects the previous pose X(k) to the new pose X(k+1) [cite: 19, 50]
+        # We use a fixed ODOMETRY_NOISE as it represents sensor uncertainty, not state uncertainty
+        odometry_measurement = gtsam.Pose2(uk[0, 0], uk[1, 0], uk[2, 0])
+        new_factors.add(gtsam.BetweenFactorPose2(X(k), X(k + 1), odometry_measurement, odometry_noise))
+
+        
         if getattr(self, 'zf_observed', True):
             # Measurement noise: sig_x and sig_y from Rf
             sig_x = np.sqrt(Rf[0,0])
             sig_y = np.sqrt(Rf[1,1])
             # For isotropic noise in GTSAM, we can take the average or use a Diagonal model
-            bearing_sigma = 0.1 # Adjust based on sensor quality
+            bearing_sigma = sig_x # Adjust based on sensor quality
             range_sigma = sig_x # Simplified
             
             br_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([bearing_sigma, range_sigma]))
@@ -310,22 +328,7 @@ class EKF(GaussianFilter):
                     new_factors.add(gtsam.BearingRangeFactor2D(
                         X(k+1), L(int(landmark_idx)), 
                         gtsam.Rot2(bearing_val), range_val, br_noise))
-        diag_Pk_bar = np.diag(Qk)
-        # Clamp diagonal elements to avoid near-zero values, then take sqrt
-        diag_Pk_bar_clamped = np.maximum(diag_Pk_bar, 1e-6)
-        odometry_sigmas = np.sqrt(diag_Pk_bar_clamped)
-        odometry_noise = gtsam.noiseModel.Diagonal.Sigmas(odometry_sigmas)
-        # ODOMETRY_SIGMAS = np.array([0.1, 0.1, 0.05]) # Adjust based on your lab settings
-        # odometry_noise = gtsam.noiseModel.Diagonal.Sigmas(ODOMETRY_SIGMAS)
-        # STEP k: Add the NEW Pose guess and the NEW BetweenFactor
-        # X(k+1) is the variable we just estimated using the EKF math above
-        new_pose_guess = gtsam.Pose2(self.xk[0, 0], self.xk[1, 0], self.xk[2, 0])
-        new_values.insert(X(k + 1), new_pose_guess)
-        
-        # The BetweenFactor connects the previous pose X(k) to the new pose X(k+1) [cite: 19, 50]
-        # We use a fixed ODOMETRY_NOISE as it represents sensor uncertainty, not state uncertainty
-        odometry_measurement = gtsam.Pose2(uk[0, 0], uk[1, 0], uk[2, 0])
-        new_factors.add(gtsam.BetweenFactorPose2(X(k), X(k + 1), odometry_measurement, odometry_noise))
+
 
         # STEP k: Add Observations (e.g., Compass/Rotation Prior)
         if getattr(self, 'zm_observed', True) and isinstance(zk, np.ndarray):
@@ -339,15 +342,26 @@ class EKF(GaussianFilter):
         try:
             self.isam.update(new_factors, new_values)
             result = self.isam.calculateEstimate()
-            
-            # Extract globally smoothed results
-            # marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
-            self.Pk = self.isam.marginalCovariance(X(k+1))
+            print(f"DEBUG: ISAM2 update successful at step k={k}")
+            # 1. Extract FULL State Vector (Robot + ALL Landmarks)
             pose_res = result.atPose2(X(k + 1))
+            optimized_xk = np.array([[pose_res.x()], [pose_res.y()], [pose_res.theta()]])
             
-            # Update state with optimized values
-            self.xk = np.array([[pose_res.x()], [pose_res.y()], [pose_res.theta()]])
-            
+            keys = gtsam.KeyVector()
+            keys.append(X(k+1))
+
+            for j in range(self.nf): # self.nf is the number of landmarks
+                if result.exists(L(j)):
+                    l_res = result.atPoint2(L(j))
+                    optimized_xk = np.vstack((optimized_xk, l_res.reshape(2, 1)))
+                    keys.append(L(j))
+                    
+            self.xk = optimized_xk # Now xk is size (3 + 2*nf, 1)
+
+            # 2. Extract FULL Joint Covariance (Essential for SLAM consistency)
+            marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
+            self.Pk = marginals.jointMarginalCovariance(keys).fullMatrix()
+            # self.Pk = self.isam.marginalCovariance(X(k+1))
         except RuntimeError as e:
             print(f"ISAM2 Error at step {k}: {e}")
             # If ISAM2 fails, we fall back to the EKF result so the loop doesn't die

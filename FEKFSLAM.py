@@ -18,7 +18,7 @@ class FEKFSLAM(FEKFMBL):
         self.nzf = 0  # number of features observed
 
         self.H = None  # Data Association Hypothesis
-        self.nf = 0  # number of features in the state vector
+        self.nf = len(self.M)  # number of features in the state vector
 
         self.plt_MappedFeaturesEllipses = []
 
