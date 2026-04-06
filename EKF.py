@@ -342,8 +342,8 @@ class EKF(GaussianFilter):
 
         # --- DIAGNOSTIC DEBUG BLOCK ---
         print(f"\n--- ISAM2 Debug Step k={k} ---")
-        print(f"New Values Keys: {[gtsam.DefaultKeyFormatter(k) for k in new_values.keys()]}")
-        print(f"New Factors: {new_factors.size()} factors added")
+        # print(f"New Values Keys: {[gtsam.DefaultKeyFormatter(k) for k in new_values.keys()]}")
+        # print(f"New Factors: {new_factors.size()} factors added")
 
         
         # Check for 'BetweenFactor' consistency
@@ -435,21 +435,22 @@ class EKF(GaussianFilter):
             new_Pk = self.Pk.copy()
 
             # 1. Sync Robot Pose Marginal (The 3x3 top-left block)
-            new_Pk[0:3, 0:3] = marginals.marginalCovariance(X(k+1))
-
-            # 2. Sync ONLY the landmarks that were observed in this time step
-            for landmark_idx in association:
-                if landmark_idx is not None:
-                    idx = int(landmark_idx) # This is the 'j' index for L(j)
-                    start = self.xBpose_dim + idx * self.zfi_dim
-                    
-                    if result.exists(L(idx)):
-                        try:
-                            # Update only the specific 2x2 diagonal block for the seen landmark
+            if k % 1 == 0:
+                print(f"STEP {k}: Performing Full Joint Sync to restore correlations...")
+                full_joint = marginals.jointMarginalCovariance(keys).fullMatrix()
+                if not np.any(np.isnan(full_joint)):
+                    new_Pk = full_joint
+            else:
+                # Fast Sync logic for intermediate steps
+                new_Pk[0:3, 0:3] = marginals.marginalCovariance(X(k+1))
+                for landmark_idx in association:
+                    if landmark_idx is not None:
+                        idx = int(landmark_idx)
+                        start = self.xBpose_dim + idx * self.zfi_dim
+                        if result.exists(L(idx)):
                             new_Pk[start:start+2, start:start+2] = marginals.marginalCovariance(L(idx))
-                        except:
-                            pass # Landmark exists but marginal couldn't be computed
             
+            # self.Pk = new_Pk
             self.Pk = new_Pk
         except RuntimeError as e:
             print(f"ISAM2 Error at step {k}: {e}")
