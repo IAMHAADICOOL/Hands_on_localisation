@@ -306,7 +306,7 @@ class EKF(GaussianFilter):
         try:
             self.isam.update(new_factors, new_values)
             result = self.isam.calculateEstimate()
-            
+            print(f"ISAM2 update successful at step {k}.")
             # Extract globally smoothed results
             # marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
             self.Pk = self.isam.marginalCovariance(X(k+1))
