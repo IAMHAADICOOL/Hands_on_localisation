@@ -398,10 +398,12 @@ class EKF(GaussianFilter):
                     except:
                         # If a specific landmark fails, give it a tiny identity covariance 
                         # so the SVD plotter doesn't crash
-                        new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+                        # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+                        pass
                 else:
                     # Fallback for landmarks not in the graph
-                    new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+                    # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+                    pass
 
             self.Pk = new_Pk
         except RuntimeError as e:

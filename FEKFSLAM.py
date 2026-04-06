@@ -115,7 +115,7 @@ class FEKFSLAM(FEKFMBL):
             
             
             P_new_new = J1 @ P_B @ J1.T + J2 @ Ri @ J2.T
-            P_new_new += np.eye(2) * 1e-6
+            # P_new_new += np.eye(2) * 1e-6
             if np.any(np.isnan(x_new_feature)) or np.any(np.isnan(P_new_new)):
                 print(f"!!! WARNING: Skipping landmark {self.nf} due to NaN in EKF projection !!!")
             # --- DEBUG START ---
