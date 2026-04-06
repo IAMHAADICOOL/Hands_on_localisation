@@ -407,29 +407,48 @@ class EKF(GaussianFilter):
             # else:
             #     self.Pk = full_joint_matrix
             # Define the size of the full state vector
-            dim = self.xBpose_dim + self.nf * self.zfi_dim
-            new_Pk = np.zeros((dim, dim))
+            # dim = self.xBpose_dim + self.nf * self.zfi_dim
+            # new_Pk = np.zeros((dim, dim))
 
-            # 1. Get Robot Pose Marginal (The 3x3 top-left block)
+            # # 1. Get Robot Pose Marginal (The 3x3 top-left block)
+            # new_Pk[0:3, 0:3] = marginals.marginalCovariance(X(k+1))
+
+            # # 2. Get individual Landmark Marginals (The 2x2 diagonal blocks)
+            # for j in range(self.nf):
+            #     start = self.xBpose_dim + j * self.zfi_dim
+            #     if result.exists(L(j)):
+            #         try:
+            #             # Extract only the 2x2 diagonal block for this landmark
+            #             new_Pk[start:start+2, start:start+2] = marginals.marginalCovariance(L(j))
+            #         except:
+            #             # If a specific landmark fails, give it a tiny identity covariance 
+            #             # so the SVD plotter doesn't crash
+            #             # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+            #             pass
+            #     else:
+            #         # Fallback for landmarks not in the graph
+            #         # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+            #         pass
+
+            # self.Pk = new_Pk
+            new_Pk = self.Pk.copy()
+
+            # 1. Sync Robot Pose Marginal (The 3x3 top-left block)
             new_Pk[0:3, 0:3] = marginals.marginalCovariance(X(k+1))
 
-            # 2. Get individual Landmark Marginals (The 2x2 diagonal blocks)
-            for j in range(self.nf):
-                start = self.xBpose_dim + j * self.zfi_dim
-                if result.exists(L(j)):
-                    try:
-                        # Extract only the 2x2 diagonal block for this landmark
-                        new_Pk[start:start+2, start:start+2] = marginals.marginalCovariance(L(j))
-                    except:
-                        # If a specific landmark fails, give it a tiny identity covariance 
-                        # so the SVD plotter doesn't crash
-                        # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
-                        pass
-                else:
-                    # Fallback for landmarks not in the graph
-                    # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
-                    pass
-
+            # 2. Sync ONLY the landmarks that were observed in this time step
+            for landmark_idx in association:
+                if landmark_idx is not None:
+                    idx = int(landmark_idx) # This is the 'j' index for L(j)
+                    start = self.xBpose_dim + idx * self.zfi_dim
+                    
+                    if result.exists(L(idx)):
+                        try:
+                            # Update only the specific 2x2 diagonal block for the seen landmark
+                            new_Pk[start:start+2, start:start+2] = marginals.marginalCovariance(L(idx))
+                        except:
+                            pass # Landmark exists but marginal couldn't be computed
+            
             self.Pk = new_Pk
         except RuntimeError as e:
             print(f"ISAM2 Error at step {k}: {e}")
