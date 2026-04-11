@@ -15,8 +15,11 @@ class FEKFSLAM_3DOFDD_InputVelocityMM_2DCartesianFeatureOM(FEKFSLAM2DCartesianFe
         self.Pose = globals()["Pose3D"]
         self.isam = gtsam.ISAM2()
         super().__init__(*args)
-
-
+        self.new_factors = gtsam.NonlinearFactorGraph()
+        self.new_values = gtsam.Values()
+        self.step_counter = 0  # Counter to track steps for batch updates
+        self.minK = 150  # minimum number of range measurements to process initially
+        self.incK = 100  # minimum number of new range measurements to process for one ISAM update
     # def GetFeatures(self):
     # Get features is inherited from EKF_3DOFDifferentialDriveInputDisplacement
 
@@ -31,7 +34,7 @@ if __name__ == '__main__':
            CartesianFeature(np.array([[40,-40]]).T)]  # feature map. Position of 2 point features in the world frame.
 
     xs0 = np.zeros((6, 1))
-    kSteps = 2000
+    kSteps = 5000
     alpha = 0.99
 
     index = [IndexStruct("x", 0, None), IndexStruct("y", 1, None), IndexStruct("yaw", 2, 1)]
