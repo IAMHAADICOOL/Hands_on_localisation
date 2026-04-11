@@ -14,6 +14,11 @@ class FEKFSLAM_3DOFDD_InputVelocityMM_2DCartesianFeatureOM(FEKFSLAM2DCartesianFe
         self.Feature = globals()["CartesianFeature"]
         self.Pose = globals()["Pose3D"]
         self.isam = gtsam.ISAM2()
+        self.new_factors = gtsam.NonlinearFactorGraph()
+        self.new_values = gtsam.Values()
+        self.step_counter = 0  # Counter to track steps for batch updates
+        self.minK = 150  # minimum number of range measurements to process initially
+        self.incK = 100  # minimum number of new range measurements to process for one ISAM update
         super().__init__(*args)
 
 
