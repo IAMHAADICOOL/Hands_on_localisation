@@ -327,14 +327,14 @@ class EKF(GaussianFilter):
         print(f"\n--- Step k={k}, Counter={self.step_counter}, Accumulated factors={self.new_factors.size()} ---")
         
         if self.step_counter >= self.incK:
-            print(f"!!! ISAM2 BATCH UPDATE: Processing {self.step_counter} accumulated steps !!!")
+            print(f"ISAM2 BATCH UPDATE: Processing {self.step_counter} accumulated steps !!!")
             try:
                 self.isam.update(self.new_factors, self.new_values)
                 result = self.isam.calculateEstimate()
                 pose_res = result.atPose2(X(k + 1))
                 
                 if abs(pose_res.x()) > 1e5 or abs(pose_res.y()) > 1e5:
-                    print(f"!!! Divergence detected at step {k}. Skipping ISAM re-injection.")
+                    print(f"Divergence detected at step {k}. Skipping ISAM re-injection.")
                     # Reset accumulators for next batch
                     self.new_factors = gtsam.NonlinearFactorGraph()
                     self.new_values = gtsam.Values()
@@ -349,7 +349,7 @@ class EKF(GaussianFilter):
                     factor = self.new_factors.at(i)
                     for key in factor.keys():
                         if not result.exists(key) and not self.new_values.exists(key):
-                            print(f"!!! FACTOR ERROR: Factor {i} refers to missing Key {gtsam.DefaultKeyFormatter(key)}")
+                            print(f"FACTOR ERROR: Factor {i} refers to missing Key {gtsam.DefaultKeyFormatter(key)}")
 
                 print(f"ISAM2 batch update successful at step {k}. Extracting results...")
                 
@@ -374,12 +374,12 @@ class EKF(GaussianFilter):
 
                 # --- Extract covariance ---
                 new_Pk = self.Pk.copy()
-                if k % 1 == 0:
-                    print(f"STEP {k}: Performing Full Joint Sync to restore correlations...")
-                    marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
-                    full_joint = marginals.jointMarginalCovariance(keys).fullMatrix()
-                    if not np.any(np.isnan(full_joint)):
-                        new_Pk = full_joint
+                # if k % 1 == 0:
+                print(f"STEP {k}: Performing Full Joint Sync to restore correlations...")
+                marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
+                full_joint = marginals.jointMarginalCovariance(keys).fullMatrix()
+                if not np.any(np.isnan(full_joint)):
+                    new_Pk = full_joint
                 
                 self.Pk = new_Pk
                 
