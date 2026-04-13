@@ -167,7 +167,7 @@ class EKF(GaussianFilter):
         # odometry_measurement = gtsam.Pose2(uk[0, 0], uk[1, 0], uk[2, 0])
         # self.new_factors.add(gtsam.BetweenFactorPose2(X(k), X(k + 1), odometry_measurement, odometry_noise))
 
-        odom_to_use = accum_odom if accum_odom is not None else uk
+        odom_to_use = gtsam.Pose2(self.rel_disp[0,0], self.rel_disp[1,0], self.rel_disp[2,0])
         
         # Determine noise model based on accumulation:
         # - No accumulation: use motion/odometry noise Qk (single-step, direct odometry)
@@ -180,14 +180,14 @@ class EKF(GaussianFilter):
             odometry_sigmas = np.sqrt(Qk.diagonal()[:3]) if Qk is not None else np.sqrt(Pk_bar.diagonal()[:3])
         
         # odometry_sigmas = np.maximum(odometry_sigmas, 1e-6)  # Ensure numerically valid
-        odometry_noise = gtsam.noiseModel.Diagonal.Sigmas(odometry_sigmas)
+        odometry_noise = gtsam.noiseModel.Gaussian.Covariance(self.rel_cov + np.eye(self.xB_dim)*1e-6)
         
         # Add the NEW Pose guess and the NEW BetweenFactor to accumulators
         new_pose_guess = gtsam.Pose2(self.xk[0, 0], self.xk[1, 0], self.xk[2, 0])
         self.new_values.insert(X(pose_idx + 1), new_pose_guess)
         
-        odometry_measurement = gtsam.Pose2(odom_to_use[0, 0], odom_to_use[1, 0], odom_to_use[2, 0])
-        self.new_factors.add(gtsam.BetweenFactorPose2(X(pose_idx), X(pose_idx + 1), odometry_measurement, odometry_noise))
+        # odometry_measurement = gtsam.Pose2(odom_to_use[0, 0], odom_to_use[1, 0], odom_to_use[2, 0])
+        self.new_factors.add(gtsam.BetweenFactorPose2(X(pose_idx), X(pose_idx + 1), odom_to_use, odometry_noise))
 
         # --- ADD LANDMARK MEASUREMENT FACTORS ---
         if getattr(self, 'zf_observed', True):

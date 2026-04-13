@@ -14,6 +14,7 @@ class FEKFSLAM_3DOFDD_InputVelocityMM_2DCartesianFeatureOM(FEKFSLAM2DCartesianFe
         self.Feature = globals()["CartesianFeature"]
         self.Pose = globals()["Pose3D"]
         self.isam = gtsam.ISAM2()
+        super().__init__(*args)
         self.new_factors = gtsam.NonlinearFactorGraph()
         self.new_values = gtsam.Values()
         self.step_counter = 0  # Counter to track steps for batch updates
@@ -22,7 +23,9 @@ class FEKFSLAM_3DOFDD_InputVelocityMM_2DCartesianFeatureOM(FEKFSLAM2DCartesianFe
         self.pose_index = 0           # Track actual pose indices in graph
         self.last_pose_step = -1      # Track which step created the last pose
         self.accumulated_odom = None  # Accumulate odometry between poses
-        super().__init__(*args)
+        self.rel_disp = np.zeros((self.xB_dim, 1))  # relative displacement between two consecutive poses
+        self.rel_cov = np.zeros((self.xB_dim, self.xB_dim))  # covariance of the relative displacement
+        
 
     # def GetFeatures(self):
     # Get features is inherited from EKF_3DOFDifferentialDriveInputDisplacement

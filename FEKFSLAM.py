@@ -274,6 +274,14 @@ class FEKFSLAM(FEKFMBL):
 
         self.xk_bar = xk_bar
         self.Pk_bar = Pk_bar
+
+        rel_pose = Pose3D(self.rel_disp)
+        self.rel_disp = rel_pose.oplus(Pose3D(uk))
+        J1_rel = rel_pose.J_1oplus(Pose3D(uk))
+        J2_rel = rel_pose.J_2oplus()
+        self.rel_cov = J1_rel @ self.rel_cov @ J1_rel.T + J2_rel @ Qk @ J2_rel.T
+
+
         return xk_bar, Pk_bar
 
     #TODO Following code has been copied from GFLocalisation.py file
@@ -377,6 +385,8 @@ class FEKFSLAM(FEKFMBL):
             # Update pose tracking
             self.pose_index += 1
             self.last_pose_step = k
+            self.rel_disp = np.zeros((self.xB_dim, 1))
+            self.rel_cov = np.zeros((self.xB_dim, self.xB_dim))
             self.accumulated_odom = None      # Reset accumulation
             print(f"Pose index now: {self.pose_index}")
         else:
