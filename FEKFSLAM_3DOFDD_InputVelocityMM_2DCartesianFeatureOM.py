@@ -19,6 +19,9 @@ class FEKFSLAM_3DOFDD_InputVelocityMM_2DCartesianFeatureOM(FEKFSLAM2DCartesianFe
         self.step_counter = 0  # Counter to track steps for batch updates
         self.minK = 150  # minimum number of range measurements to process initially
         self.incK = 100  # minimum number of new range measurements to process for one ISAM update
+        self.pose_index = 0           # Track actual pose indices in graph
+        self.last_pose_step = -1      # Track which step created the last pose
+        self.accumulated_odom = None  # Accumulate odometry between poses
         super().__init__(*args)
 
     # def GetFeatures(self):
