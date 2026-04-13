@@ -294,6 +294,12 @@ class FEKFSLAM(FEKFMBL):
         zf, Rf = self.GetFeatures(xk_1)
         xk_1, Pk_1 = self.AddNewFeatures(xk_1, Pk_1, zf, Rf)
         xsk_1 = self.robot.xsk_1
+        
+        # Initialize sparse pose tracking
+        self.pose_index = 0
+        self.last_pose_step = -1
+        self.accumulated_odom = None
+        
         i = 1
         for self.k in range(self.kSteps):
             # print("This is the shape of xk_1 at the start",temp.shape)
@@ -350,18 +356,36 @@ class FEKFSLAM(FEKFMBL):
         self.n_zf = 0 if zf is None else len(zf) // self.zfi_dim
         self.H = self.DataAssociation(xk_bar, Pk_bar, zf, Rf)
         zk, Rk, Hk, Vk, znp, Rnp = self.StackMeasurementsAndFeatures(zm, Rm, Hm, Vm, zf, Rf, self.H)
-        # if zk is None:
-            # xk, Pk = xk_bar, Pk_bar
-            # # had to add the following line because then plotting was not working
-            # self.xk, self.Pk = xk_bar, Pk_bar
-        # else:
-            # print("This is the type of zk", type(zk))
-            # print("This is type of Rk", type(Rk))
-            # print("This is type of Hk", type(Hk))
-            # print("This is type of Vk", type(Vk))
-            # print("This is the type of Pk_bar", type(Pk_bar))
-        xk, Pk = self.Update(zk,Rk,xk_bar,Pk_bar,Hk,Vk, k, xk_1, uk, Qk)
-        self.xk, self.Pk = xk, Pk
+        
+        # --- SPARSE POSE LOGIC: Only add pose when compass reading exists ---
+        if zk is not None:
+            # Compress odometry: use accumulated if available, else single step
+            print(f"\n=== COMPASS READING at step {k}: Adding pose ===")
+            xk, Pk = self.Update(zk, Rk, xk_bar, Pk_bar, Hk, Vk, k, xk_1, uk, Qk,
+                                pose_index=self.pose_index,
+                                last_pose_step=self.last_pose_step,
+                                accumulated_odom=self.accumulated_odom)
+            self.xk, self.Pk = xk, Pk
+            
+            # Update pose tracking
+            self.pose_index += 1
+            self.last_pose_step = k
+            self.accumulated_odom = None      # Reset accumulation
+            print(f"Pose index now: {self.pose_index}")
+        else:
+            # No compass reading: accumulate odometry for next pose
+            print(f"\nStep {k}: No compass reading - accumulating odometry")
+            xk, Pk = xk_bar, Pk_bar
+            self.xk, self.Pk = xk_bar, Pk_bar
+            
+            # Accumulate odometry (as 3x1 matrix)
+            if self.accumulated_odom is None:
+                self.accumulated_odom = uk.copy()
+            else:
+                self.accumulated_odom = self.accumulated_odom + uk
+            
+            print(f"Accumulated odometry shape: {self.accumulated_odom.shape}, sum: {np.sum(self.accumulated_odom)}")
+        
         # Use the variable names zm, zf, Rf, znp, Rnp so that the plotting functions work
         xk, Pk = self.AddNewFeatures(xk, Pk, znp, Rnp)
         self.xk, self.Pk = xk, Pk
