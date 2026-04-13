@@ -106,7 +106,7 @@ class EKF(GaussianFilter):
                     self.Jfw(self.xk_1, self.uk).T)
         return self.xk_bar, self.Pk_bar
 
-    def Update(self, zk, Rk, xk_bar, Pk_bar, Hk, Vk, k, xk_1, uk, Qk, pose_index=None, last_pose_step=None, accumulated_odom=None):
+    def Update(self, zk, Rk, xk_bar, Pk_bar, Hk, Vk, k, xk_1, uk, Qk, pose_index=None):
         """
         Update step of the EKF + ISAM2 with batch accumulation.
         - Calculates standard EKF update first.
@@ -119,8 +119,7 @@ class EKF(GaussianFilter):
         """
         # Use provided values or fall back to instance variables
         pose_idx = pose_index if pose_index is not None else self.pose_index
-        last_pose_k = last_pose_step if last_pose_step is not None else self.last_pose_step
-        accum_odom = accumulated_odom if accumulated_odom is not None else self.accumulated_odom
+        # accum_odom = accumulated_odom if accumulated_odom is not None else self.accumulated_odom
         
         # --- 1. Standard EKF Update Logic ---
         # Calculate Kalman gain
@@ -162,27 +161,27 @@ class EKF(GaussianFilter):
         # --- ADD ODOMETRY FACTOR ---
         # Use accumulated odometry if available (when there are intermediate steps without compass readings)
         # Otherwise use single-step odometry
-        odom_to_use = accum_odom if accum_odom is not None else uk
+        odom_to_use = gtsam.Pose2(self.rel_disp[0,0], self.rel_disp[1,0], self.rel_disp[2,0])
         
         # Determine noise model based on accumulation:
         # - No accumulation: use motion/odometry noise Qk (single-step, direct odometry)
         # - With accumulation: use state covariance Pk_bar (accumulated steps with intermediate poses)
-        if accum_odom is not None:
+        # if accum_odom is not None:
             # Accumulation occurred: use state covariance for odometry factor noise
-            odometry_sigmas = np.sqrt(Pk_bar.diagonal()[:3])
-        else:
+            # odometry_sigmas = np.sqrt(Pk_bar.diagonal()[:3])
+        # else:
             # No accumulation: use motion/odometry noise Qk for single-step odometry
-            odometry_sigmas = np.sqrt(Qk.diagonal()[:3]) if Qk is not None else np.sqrt(Pk_bar.diagonal()[:3])
+            # odometry_sigmas = np.sqrt(Qk.diagonal()[:3]) if Qk is not None else np.sqrt(Pk_bar.diagonal()[:3])
         
         # odometry_sigmas = np.maximum(odometry_sigmas, 1e-6)  # Ensure numerically valid
-        odometry_noise = gtsam.noiseModel.Diagonal.Sigmas(odometry_sigmas)
+        odometry_noise = gtsam.noiseModel.Gaussian.Covariance(self.rel_cov + np.eye(self.xB_dim)*1e-6)
         
         # Add the NEW Pose guess and the NEW BetweenFactor to accumulators
         new_pose_guess = gtsam.Pose2(self.xk[0, 0], self.xk[1, 0], self.xk[2, 0])
         self.new_values.insert(X(pose_idx + 1), new_pose_guess)
         
-        odometry_measurement = gtsam.Pose2(odom_to_use[0, 0], odom_to_use[1, 0], odom_to_use[2, 0])
-        self.new_factors.add(gtsam.BetweenFactorPose2(X(pose_idx), X(pose_idx + 1), odometry_measurement, odometry_noise))
+        # odometry_measurement = gtsam.Pose2(odom_to_use[0, 0], odom_to_use[1, 0], odom_to_use[2, 0])
+        self.new_factors.add(gtsam.BetweenFactorPose2(X(pose_idx), X(pose_idx + 1), odom_to_use, odometry_noise))
 
         # --- ADD LANDMARK MEASUREMENT FACTORS ---
         # if getattr(self, 'zf_observed', True):
@@ -279,11 +278,14 @@ class EKF(GaussianFilter):
         except RuntimeError as e:
             print(f"ISAM2 Error at step {k}: {e}")
             self.Pk = Pk_bar
+            exit(0)
         
         # --- RESET ACCUMULATORS FOR NEXT BATCH ---
         print(f"Resetting factor/value accumulators for next batch...")
         self.new_factors = gtsam.NonlinearFactorGraph()
         self.new_values = gtsam.Values()
+        # self.rel_disp = np.zeros((self.xB_dim, 1))
+        # self.rel_cov = np.zeros((self.xB_dim, self.xB_dim))
             # self.step_counter = 0
 
         return self.xk, self.Pk

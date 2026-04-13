@@ -274,6 +274,13 @@ class FEKFSLAM(FEKFMBL):
 
         self.xk_bar = xk_bar
         self.Pk_bar = Pk_bar
+
+        rel_pose = Pose3D(self.rel_disp)
+        self.rel_disp = rel_pose.oplus(Pose3D(uk))
+        J1_rel = rel_pose.J_1oplus(Pose3D(uk))
+        J2_rel = rel_pose.J_2oplus()
+        self.rel_cov = J1_rel @ self.rel_cov @ J1_rel.T + J2_rel @ Qk @ J2_rel.T
+
         return xk_bar, Pk_bar
 
     #TODO Following code has been copied from GFLocalisation.py file
@@ -362,14 +369,14 @@ class FEKFSLAM(FEKFMBL):
             # Compress odometry: use accumulated if available, else single step
             print(f"\n=== COMPASS READING at step {k}: Adding pose ===")
             xk, Pk = self.Update(zk, Rk, xk_bar, Pk_bar, Hk, Vk, k, xk_1, uk, Qk,
-                                pose_index=self.pose_index,
-                                last_pose_step=self.last_pose_step,
-                                accumulated_odom=self.accumulated_odom)
+                                pose_index=self.pose_index)
             self.xk, self.Pk = xk, Pk
             
             # Update pose tracking
             self.pose_index += 1
             self.last_pose_step = k
+            self.rel_disp = np.zeros((self.xB_dim, 1))
+            self.rel_cov = np.zeros((self.xB_dim, self.xB_dim))
             self.accumulated_odom = None      # Reset accumulation
             print(f"Pose index now: {self.pose_index}")
         else:
@@ -379,12 +386,12 @@ class FEKFSLAM(FEKFMBL):
             self.xk, self.Pk = xk_bar, Pk_bar
             
             # Accumulate odometry (as 3x1 matrix)
-            if self.accumulated_odom is None:
-                self.accumulated_odom = uk.copy()
-            else:
-                self.accumulated_odom = self.accumulated_odom + uk
+            # if self.accumulated_odom is None:
+                # self.accumulated_odom = uk.copy()
+            # else:
+                # self.accumulated_odom = self.accumulated_odom + uk
             
-            print(f"Accumulated odometry shape: {self.accumulated_odom.shape}, sum: {np.sum(self.accumulated_odom)}")
+            # print(f"Accumulated odometry shape: {self.accumulated_odom.shape}, sum: {np.sum(self.accumulated_odom)}")
         
         # Use the variable names zm, zf, Rf, znp, Rnp so that the plotting functions work
         xk, Pk = self.AddNewFeatures(xk, Pk, znp, Rnp)
