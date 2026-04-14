@@ -89,8 +89,8 @@ class FEKFSLAM(FEKFMBL):
 
         number_of_new_features = znp.size // self.zfi_dim
         ## To be completed by the student
-        new_factors = gtsam.NonlinearFactorGraph()
-        new_values = gtsam.Values()
+        # new_factors = gtsam.NonlinearFactorGraph()
+        # new_values = gtsam.Values()
         for i in range(number_of_new_features):
             
             idx_start = i * self.zfi_dim
@@ -153,12 +153,12 @@ class FEKFSLAM(FEKFMBL):
 
             # 1. Add Initial Estimate
             l_pos = gtsam.Point2(x_new_feature[0,0], x_new_feature[1,0])
-            new_values.insert(landmark_key, l_pos)
+            self.new_values.insert(landmark_key, l_pos)
 
             # 2. Add Prior Factor using the calculated EKF covariance
             # We use the landmark's own covariance block (P_new_new)
             landmark_noise = gtsam.noiseModel.Gaussian.Covariance(P_new_new)
-            new_factors.add(gtsam.PriorFactorPoint2(landmark_key, l_pos, landmark_noise))
+            self.new_factors.add(gtsam.PriorFactorPoint2(landmark_key, l_pos, landmark_noise))
 
             # 3. Update ISAM2 immediately with the new landmark node
             # self.isam.update(new_factors, new_values)
@@ -166,7 +166,9 @@ class FEKFSLAM(FEKFMBL):
             self.nf += 1  # Increment the count of features in the state vector
         
         try:
-            self.isam.update(new_factors, new_values)
+            self.isam.update(self.new_factors, self.new_values)
+            self.new_factors = gtsam.NonlinearFactorGraph()
+            self.new_values = gtsam.Values()
         except RuntimeError as e:
             print(f"ISAM2 Error in AddNewFeatures: {e}")
         return xk_plus, Pk_plus
@@ -337,8 +339,8 @@ class FEKFSLAM(FEKFMBL):
         # temp = xk_1
         Pk_1 = P0
 
-        zf, Rf = self.GetFeatures(xk_1)
-        xk_1, Pk_1 = self.AddNewFeatures(xk_1, Pk_1, zf, Rf)
+        # zf, Rf = self.GetFeatures(xk_1)
+        # xk_1, Pk_1 = self.AddNewFeatures(xk_1, Pk_1, zf, Rf)
         xsk_1 = self.robot.xsk_1
         i = 1
         for self.k in range(self.kSteps):
