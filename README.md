@@ -143,7 +143,7 @@ python3 <main_simulation_script>.py
 |-|--------|-----------|--------|
 | Map at start | None | **All known** | None |
 | `nf` at init | 0 | **`len(M)`** | 0 |
-| `AddNewFeatures` called | Yes (no-op) | **No (commented out)** | Yes |
+| `AddNewFeatures` called | No (no landmarks) | **No (commented out)** | Yes |
 | Initial landmark GTSAM nodes | None | **`PriorFactorPoint2` for all** | Added dynamically |
 | `BearingRangeFactor2D` | No | **Yes** | Yes |
 | State vector size | Fixed (3) | **Fixed (3 + 2N)** | Grows over time |
