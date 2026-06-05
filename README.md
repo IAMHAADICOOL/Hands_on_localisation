@@ -130,7 +130,7 @@ python3 <main_simulation_script>.py
 |--------|--------|--------|-----------|
 | Map at start | None | All known | **None — built on the fly** |
 | `nf` at init | 0 | `len(M)` | **0** |
-| `AddNewFeatures` active | Yes (EKF only) | No | **Yes (EKF + GTSAM)** |
+| `AddNewFeatures` active | No (no landmarks) | No | **Yes (EKF + GTSAM)** |
 | Landmark GTSAM nodes | None | Pre-inserted | **Inserted as discovered** |
 | `BearingRangeFactor2D` | No | Yes | **Yes** |
 | State vector size | Fixed (3) | Fixed (3 + 2N) | **Grows over time** |
