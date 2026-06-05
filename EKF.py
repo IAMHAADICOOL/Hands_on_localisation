@@ -246,51 +246,56 @@ class EKF(GaussianFilter):
             
             self.xk = optimized_xk
 
-            # --- 2. Covariance Extraction with Individual Checks ---
+            # # --- 2. Covariance Extraction with Individual Checks ---
             marginals = gtsam.Marginals(self.isam.getFactorsUnsafe(), result)
             
-            # # Request the joint matrix
-            # full_joint_matrix = marginals.jointMarginalCovariance(keys).fullMatrix()
+            # # # Request the joint matrix
+            full_joint_matrix = marginals.jointMarginalCovariance(keys).fullMatrix()
             
-            # if np.any(np.isnan(full_joint_matrix)):
-            #     print(f"\n[DEBUG] NaN found in Joint Matrix at Step {k}. Checking marginals:")
-            #     for key in keys:
-            #         m = marginals.marginalCovariance(key)
-            #         if np.any(np.isnan(m)):
-            #             # Symbol.string() helps see if it's x3, l2, etc.
-            #             print(f"  -> Key {gtsam.DefaultKeyFormatter(key)} contains NaNs!")
+            if np.any(np.isnan(full_joint_matrix)):
+                print(f"\n[DEBUG] NaN found in Joint Matrix at Step {k}. Checking marginals:")
+                for key in keys:
+                    m = marginals.marginalCovariance(key)
+                    if np.any(np.isnan(m)):
+                        # Symbol.string() helps see if it's x3, l2, etc.
+                        print(f"  -> Key {gtsam.DefaultKeyFormatter(key)} contains NaNs!")
                 
-            #     # Fallback: If joint is broken, try to use Pose marginal + identity for landmarks
-            #     # This prevents the SVD converge crash
-            #     self.Pk = Pk_bar 
-            # else:
-            #     self.Pk = full_joint_matrix
-            # Define the size of the full state vector
-            dim = self.xBpose_dim + self.nf * self.zfi_dim
-            new_Pk = np.zeros((dim, dim))
+                # Fallback: If joint is broken, try to use Pose marginal + identity for landmarks
+                # This prevents the SVD converge crash
+                self.Pk = Pk_bar 
+            else:
+                self.Pk = full_joint_matrix
+            # # Define the size of the full state vector
+            # dim = self.xBpose_dim + self.nf * self.zfi_dim
+            # new_Pk = np.zeros((dim, dim))
 
-            # 1. Get Robot Pose Marginal (The 3x3 top-left block)
-            new_Pk[0:3, 0:3] = marginals.marginalCovariance(X(pose_idx + 1))
+            # # 1. Get Robot Pose Marginal (The 3x3 top-left block)
+            # new_Pk[0:3, 0:3] = marginals.marginalCovariance(X(pose_idx + 1))
 
-            # 2. Get individual Landmark Marginals (The 2x2 diagonal blocks)
-            for j in range(self.nf):
-                start = self.xBpose_dim + j * self.zfi_dim
-                if result.exists(L(j)):
-                    try:
-                        # Extract only the 2x2 diagonal block for this landmark
-                        new_Pk[start:start+2, start:start+2] = marginals.marginalCovariance(L(j))
-                    except:
-                        # If a specific landmark fails, give it a tiny identity covariance 
-                        # so the SVD plotter doesn't crash
-                        # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
-                        pass
-                else:
-                    # Fallback for landmarks not in the graph
-                    # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
-                    pass
+            # # 2. Get individual Landmark Marginals (The 2x2 diagonal blocks)
+            # for j in range(self.nf):
+            #     start = self.xBpose_dim + j * self.zfi_dim
+            #     if result.exists(L(j)):
+            #         try:
+            #             # Extract only the 2x2 diagonal block for this landmark
+            #             new_Pk[start:start+2, start:start+2] = marginals.marginalCovariance(L(j))
+            #         except:
+            #             # If a specific landmark fails, give it a tiny identity covariance 
+            #             # so the SVD plotter doesn't crash
+            #             # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+            #             pass
+            #     else:
+            #         # Fallback for landmarks not in the graph
+            #         # new_Pk[start:start+2, start:start+2] = np.eye(2) * 0.1
+            #         pass
 
-            self.Pk = new_Pk
-            print(f"ISAM2 batch update successful at step {k}. Extracting results...")
+            # self.Pk = new_Pk
+            # # joint = marginals.jointMarginalCovariance(keys).fullMatrix()
+
+            # # The joint matrix is ordered by keys: [pose(3x3), L0(2x2), L1(2x2), ...]
+            # # Build your full Pk from it
+            # # self.Pk = joint  # This IS the correct full covariance
+            # print(f"ISAM2 batch update successful at step {k}. Extracting results...")
 
         except RuntimeError as e:
             print(f"ISAM2 Error at step {k}: {e}")
